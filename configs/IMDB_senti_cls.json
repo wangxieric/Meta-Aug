@@ -1,0 +1,36 @@
+{
+    "system": {
+        "root_dir": "../",
+        "log_dir": "logs/",
+        "result_dir": "results/",
+        "process_dir": "processes/",
+        "checkpoint_dir": "checkpoints/",
+        "dataset_dir": "datasets/",
+        "run_dir": "runs/",
+        "tune_dir": "tune_results/",
+        "device": "gpu",
+        "seed": 2021,
+        "metrics": ["precision", "recall", "F1"],
+        "valid_metric": "F1",
+        "result_file": "bert_result.csv"
+    },
+    "model": {
+        "model": "BERT",
+        "emb_dim": 1024,
+        "num_of_labels": 2,
+        "max_seq_len": 100,
+        "batch_size": 400,
+        "batch_eval": true,
+        "dropout": 0.0,
+        "optimizer": "adam",
+        "loss": "cross_entropy",
+        "lr": 0.05,
+        "reg": 0.001,
+        "max_epoch": 200,
+        "max_n_update": 20,
+        "use_meta": true,
+        "meta_atr": ["len", "noun", "verb", "adj", "adv"],
+        "save_name": "BERT.model",
+        "result_col": ["model","emb_dim","batch_size","dropout","optimizer","loss","lr","reg"]
+    }
+}
