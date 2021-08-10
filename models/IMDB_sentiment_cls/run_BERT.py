@@ -2,49 +2,51 @@ import os
 import pandas as pd
 import torch
 import sys
+sys.path.insert(0, "/nfs/Meta-Aug/")
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from transformers import get_linear_schedule_with_warmup
 from transformers.optimization import AdamW
+from transformers import BertModel
+from transformers import AutoTokenizer
 from sys import platform
 import pickle
 import gzip
-from utils_Ext import train, validate, test, Metric
+from utils import train, validate, test, Metric
 from BertClassifier import BertClassifier
 from core.config import prep_config
 from core.prep_meta import cal_len_atr
 from core.prep_meta import cal_pos_atr
-
+import nltk
+import numpy as np
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
 
 
 class TextDataPreprocess(Dataset):
     """
     Text Data Encoding, which generates the intial token_ids of the input text.
     """
-    def __init__(self, input_data, max_seq_len = 100):
+    def __init__(self, dataset, max_seq_len = 100):
         super(TextDataPreprocess, self).__init__()
-        
-        # initialise transformer
-        self.bert = BertModel.from_pretrained('bert-large-uncased')
         self.tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
-        
         self.config_path = '../../configs/IMDB_senti_cls.json'
         self.config = prep_config(self.config_path)
         
         self.max_seq_len = self.config['model']['max_seq_len']
         self.use_meta = self.config['model']['use_meta']
         if self.use_meta:
-            self.meta_feat = self.config['meta_feat']
-            
-        self.inputs = self.get_input(input_data)
+            self.meta_atr = self.config['model']['meta_atr']
+        self.dataset = dataset 
+        self.inputs = self.get_input(self.dataset)
 
     def __len__(self):
-        return len(self.input_data)
+        return len(self.dataset)
     
     def __getitem__(self, idx):
         outputs = []
-        for key, values in self.inputs.items():
-            outputs.append(self.inputs[key][idx])
+        for part_input in self.inputs:
+            outputs.append(part_input[idx])
         return outputs
     
     def get_input(self, input_data):
@@ -55,29 +57,27 @@ class TextDataPreprocess(Dataset):
         tokens_seq = list(map(self.tokenizer.tokenize, sentences))
         result = list(map(self.trunate_and_pad, tokens_seq))
         
-        input_ids = [i[0] for i in result]
+        input_ids =  [i[0] for i in result]
         attention_mask = [i[1] for i in result]
         
-        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        sentence_feat = outputs.last_hidden_state[:,0]
-        
         if self.use_meta:
-            atr_scores = []
             # calculate length attribute
-            atr_scores.append(list(map(cal_len_atr, sentences)))
+            len_atr = np.array(list(map(cal_len_atr, sentences)))
+            len_atr = len_atr.reshape(-1, 1)
             
             # calculate part_of_speech attribute
-            atr_scores.append(list(map(cal_pos_atr, sentences)))
+            pos_atr = np.array(list(map(cal_pos_atr, sentences)))
             
+            atr_scores = np.concatenate((len_atr,pos_atr), axis = 1)
             return (
-                torch.Tensor(sentence_feat).type(torch.float),
+                torch.Tensor(input_ids).type(torch.long),
                 torch.Tensor(attention_mask).type(torch.long),
                 torch.Tensor(labels).type(torch.long),
                 torch.Tensor(atr_scores).type(torch.float),
             )
         else:
             return(
-                torch.Tensor(sentence_feat).type(torch.float),
+                torch.Tensor(input_ids).type(torch.long),
                 torch.Tensor(attention_mask).type(torch.long),
                 torch.Tensor(labels).type(torch.long),
                 None,
@@ -93,7 +93,7 @@ class TextDataPreprocess(Dataset):
         padding = [0] * (self.max_seq_len - len(tokens_seq))
         
         # Convert tokens_seq to token_ids
-        input_ids = self.bert_tokenizer.convert_tokens_to_ids(tokens_seq)
+        input_ids = self.tokenizer.convert_tokens_to_ids(tokens_seq)
         input_ids += padding
         attention_mask = [1] * len(tokens_seq) + padding
         token_types_ids = [0] * self.max_seq_len
@@ -129,9 +129,7 @@ def model_train_validate_test(train_df, test_df, target_dir,
     if_save_model: if save the trained model to the target dir.
     checkpoint : the default is None.
     """
-
     bertclassifier = BertClassifier(requires_grad = True)
-    tokenizer = bertclassifier.tokenizer
     
     print(20 * "=", " Preparing for training ", 20 * "=")
     # Path to save the model, create a folder if not exist.
@@ -143,11 +141,11 @@ def model_train_validate_test(train_df, test_df, target_dir,
     # For the IMDB dataset, there is no validation dataset
 
     print("\t* Loading training data...")
-    train_data = TextDataPreprocess(tokenizer, train_df, max_seq_len = max_seq_len)
+    train_data = TextDataPreprocess(train_df, max_seq_len = max_seq_len)
     train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
     
     print("\t* Loading test data...")
-    test_data = TextDataPreprocess(tokenizer,test_df, max_seq_len = max_seq_len) 
+    test_data = TextDataPreprocess(test_df, max_seq_len = max_seq_len) 
     test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size)
     
     # -------------------- Model definition ------------------- --------------#
@@ -210,8 +208,9 @@ def model_train_validate_test(train_df, test_df, target_dir,
     patience_counter = 0
     for epoch in range(start_epoch, epochs + 1):
         epochs_count.append(epoch)
-
+        
         print("* Training epoch {}:".format(epoch))
+        print("parameters: ", param_optimizer)
         epoch_time, epoch_loss, epoch_accuracy = train(model, train_loader, optimizer, epoch, max_grad_norm)
         train_losses.append(epoch_loss)
         train_accuracies.append(epoch_accuracy)  
@@ -250,7 +249,7 @@ def model_train_validate_test(train_df, test_df, target_dir,
             test_prediction['prob_0'] = 1-test_prediction['prob_1']
             test_prediction['prediction'] = test_prediction.apply(lambda x: 0 if (x['prob_0'] > x['prob_1']) else 1, axis=1)
             test_prediction = test_prediction[['prob_0', 'prob_1', 'prediction']]
-            test_prediction.to_csv(os.path.join(target_dir,"test_prediction_ext_v2.csv"), index=False)
+            test_prediction.to_csv(os.path.join(target_dir,"test_prediction_ext.csv"), index=False)
              
         if patience_counter >= patience:
             print("-> Early stopping: patience limit reached, stopping...")
@@ -259,10 +258,10 @@ def model_train_validate_test(train_df, test_df, target_dir,
         
 if __name__ == "__main__":
     sys.stdout = open('outputs/BERT/results_IMDB_meta.txt', 'w', buffering=1)
-    data_df = pickle.load(gzip.open("data/data_processing/processed_IMDB_data.p", 'rb'))
+    data_df = pickle.load(gzip.open("../../data/IMDB/processed_IMDB_data.p", 'rb'))
     train_df = data_df.head(25000)
     test_df = data_df.tail(25000)
     target_dir = "outputs/BERT"
-    model_train_validate_test(train_df, test_df, target_dir, max_seq_len=100, epochs=5, batch_size=32, lr=1e-5, patience=2, max_grad_norm=10.0, if_save_model=True, checkpoint=None)
+    model_train_validate_test(train_df, test_df, target_dir, max_seq_len=100, epochs=10, batch_size=64, lr=5e-5, patience=3, max_grad_norm=10.0, if_save_model=True, checkpoint=None)
     test_result = pd.read_csv(os.path.join(target_dir, 'test_prediction_ext.csv'))
     Metric(test_df.label, test_result.prediction)

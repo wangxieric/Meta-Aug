@@ -74,7 +74,7 @@ def train(model, dataloader, optimizer, epoch_number, max_gradient_norm):
         seqs_feat, masks, labels = batch_seqs_feat.to(device), batch_seq_masks.to(device), batch_labels.to(device)
         seqs_atr = batch_seqs_atr.to(device) if batch_seqs_atr is not None else batch_seqs_atr
         optimizer.zero_grad()
-        loss, logits, probabilities = model(seqs_feat, masks, labels, batch_atr)
+        loss, logits, probabilities = model(seqs_feat, masks, labels, seqs_atr)
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), max_gradient_norm)
         optimizer.step()
