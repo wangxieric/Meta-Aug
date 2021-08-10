@@ -36,5 +36,6 @@
 ```
 3. Implement the Meta-Trans transformer to encode the review attribute information.
 ```
+  from core.meta_trans import MetaTrans
   output, attn_output_weights = self.meta_trans(batch_text_data, batch_meta, ...)
 ```
