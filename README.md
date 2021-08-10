@@ -39,3 +39,5 @@
   from core.meta_trans import MetaTrans
   output, attn_output_weights = self.meta_trans(batch_text_data, batch_meta, ...)
 ```
+Hint: the shape of batch_text_data is (batch_size x num_atr x num_tokens x emb_size), 
+the num_tokens is 1 if the global embedding is used (e.g. the embedding of '[cls]').
