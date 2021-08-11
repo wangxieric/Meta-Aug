@@ -1,6 +1,23 @@
 # Meta-Aug
 
 ### A document-level data augmentation framework (Meta-Aug) leverages various meta-data to enrich the document representation for downstream tasks. 
+#### Example Text:
+```
+Natural language processing (NLP) is a subfield of linguistics, computer science, and artificial intelligence concerned with the interactions 
+between computers and human language, in particular how to program computers to process and analyze large amounts of natural language data. 
+The goal is a computer capable of "understanding" the contents of documents, including the contextual nuances of the language within them. 
+The technology can then accurately extract information and insights contained in the documents as well as categorize and organize 
+the documents themselves.
+```
+#### Example meta-data:
+```
+Length: number_of_tokens / max_length = 82 / 500 = 0.164
+Number of Unique Terms: number_of_unique_tokens / max_length = 54 / 500 = 0.108
+Noun Ratio: number_of_nouns / number_of_tokens = 14 / 82 = 0.171
+Lexical diversity: VOCD => 50.48, MTLD => 40.88 
+(hint: the higher the lexical diversity, the more complext the text.)
+...
+```
 
 ## A quick guide of using _Meta-Aug_
 
